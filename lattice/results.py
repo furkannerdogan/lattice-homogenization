@@ -90,20 +90,25 @@ def stiffness(meta, steps):
 
 
 def virtual_test_results(meta, steps):
-    """Per stress-controlled step: average stress and strain (Voigt, engineering shear)."""
+    """Per stress-controlled step: average stress and strain (Voigt, engineering shear).
+    The average stress is the applied one: Abaqus reports RF = 0 at loaded, unconstrained DOFs, so
+    only the constrained lower-triangle DOFs carry a reaction. Those reactions must equal the applied
+    shear by moment balance; their mismatch is returned as `equilibrium_error` (a setup check)."""
     geom = BoxCell(*meta['box'])
     out = {}
     for s, r in zip(meta['steps'], steps):
         if s['kind'] != 'stress':
             continue
+        S = np.array(s['sigma'], dtype=float)
         T = average_stress(r['RF'], geom)
+        low = [(1, 0), (2, 0), (2, 1)]                      # reactions of the fixed lower-triangle DOFs
+        err = max(abs(T[i, j] - S[i, j]) for i, j in low) / max(np.abs(S).max(), 1e-30)
         H = gradient_from_rp(r['U'], geom)
         eps = 0.5 * (H + H.T)
         out[s['name']] = dict(
             description=s.get('description', ''),
-            sigma_applied=np.array(s['sigma']),
-            sigma=0.5 * (T + T.T), sigma_asym=float(np.abs(T - T.T).max()),
+            sigma_applied=S, sigma=S, equilibrium_error=float(err),
             eps=eps, H=H,
             eps_voigt=np.array([eps[i, j] * (1 if i == j else 2) for i, j in VOIGT_PAIRS]),
-            sigma_voigt=np.array([0.5 * (T[i, j] + T[j, i]) for i, j in VOIGT_PAIRS]))
+            sigma_voigt=np.array([S[i, j] for i, j in VOIGT_PAIRS]))
     return out

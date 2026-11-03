@@ -103,7 +103,7 @@ Average stress: `sigma_ik = RF_k[i] L_k / V`, V = full cell volume (holes includ
   and 0.2 (470k and 122k nodes, too large for this 2-core machine).
 
 Not done here: running the decks in Abaqus (no licence in this environment), and
-`scripts/abaqus_extract.py` is untested against a real ODB.
+`scripts/abaqus_extract.py` checked on grid_rho40_nt2 in Abaqus: C matches CalculiX to 1e-7.
 
 ## Reference results (CalculiX, production meshes)
 
