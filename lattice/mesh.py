@@ -12,6 +12,7 @@ have matching nodes by construction; lattice.pbc checks it again when the equati
 Mesh density: n_t elements across the thinnest wall (h = t_min / n_t); the extrusion direction of
 the prismatic cells has n_ext layers (the periodic fluctuation does not vary along it).
 """
+import threading
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -149,11 +150,19 @@ def grid_mesh(rho, n_t, n_ext, L=L_DEFAULT, ratio=1.3, hmax_factor=6.0):
 # ---------------------------------------------------------------------------------------------
 # triangles, honeycomb: periodic 2D quadrilaterals (gmsh) extruded along x
 # ---------------------------------------------------------------------------------------------
+GMSH_LOCK = threading.Lock()
+
+
 def section_quads(name, rho, h, L=L_DEFAULT):
     """All-quadrilateral periodic mesh of the section in CAD (x, y); returns (points (n, 2), quads (m, 4))."""
+    with GMSH_LOCK:                                     # gmsh keeps one global model: one caller at a time
+        return _section_quads(name, rho, h, L)
+
+
+def _section_quads(name, rho, h, L):
     import gmsh
     if not gmsh.isInitialized():
-        gmsh.initialize()
+        gmsh.initialize(interruptible=False)            # no SIGINT handler: works outside the main thread
     gmsh.option.setNumber('General.Verbosity', 1)
     gmsh.model.add(f'{name}_section')
     occ = gmsh.model.occ

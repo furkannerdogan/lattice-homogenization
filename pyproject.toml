@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lattice-homogenization"
+version = "0.1.0"
+description = "Periodic homogenization of 3D-printed lattice cells: CalculiX runs, density laws, browser explorer"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "gmsh>=4.11",          # meshes of the triangles and honeycomb sections
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+
+[project.optional-dependencies]
+cad = ["trimesh>=4", "scikit-image>=0.22"]          # STL/STEP export (scripts/make_cad.py)
+figures = ["matplotlib>=3.8", "playwright>=1.40"]    # static report figures (scripts/postprocess.py, render)
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+lattice-app = "lattice_app.__main__:main"
+
+[tool.setuptools]
+packages = ["lattice", "lattice_app"]
+
+[tool.setuptools.package-data]
+lattice = ["vendor/*"]
+lattice_app = ["data/*.json", "static/*", "static/vendor/*"]

@@ -1,6 +1,5 @@
 """python -m pytest -q   (the solver tests need ccx on the PATH and are skipped otherwise)"""
 import os
-import shutil
 import subprocess
 import sys
 
@@ -12,7 +11,10 @@ from lattice import inp, laws, mesh, post, results                       # noqa:
 from lattice.geometry import PATTERNS, density, wall_thickness             # noqa: E402
 from lattice.pbc import BoxCell, periodic_classes                         # noqa: E402
 
-HAS_CCX = shutil.which('ccx') is not None
+from lattice.solver import find_ccx                                     # noqa: E402
+
+CCX = find_ccx()
+HAS_CCX = CCX is not None
 
 
 @pytest.mark.parametrize('name', ['grid', 'triangles', 'honeycomb', 'cubic'])
@@ -49,7 +51,7 @@ def test_solid_cell_returns_bulk_stiffness(tmp_path):
     m = mesh.Mesh(qn, h20, 'C3D20R', (20, 30, 10), dict(pattern='grid', rho=1.0, n_t=0))
     p = str(tmp_path / 'solid.inp')
     meta = inp.write_deck(m, p, 'ccx', field_output=False)
-    subprocess.run(['ccx', '-i', p[:-4]], capture_output=True, check=True)
+    subprocess.run([CCX, '-i', os.path.basename(p[:-4])], cwd=str(tmp_path), capture_output=True, check=True)
     st = results.parse_ccx_dat(p[:-4] + '.dat', meta, m.nodes)
     C, _ = results.stiffness(meta, st)
     assert np.allclose(C, post.iso_C(meta['E'], meta['nu']), rtol=1e-6, atol=1e-6)

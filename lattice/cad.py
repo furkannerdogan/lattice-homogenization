@@ -12,7 +12,7 @@ from .geometry import L_DEFAULT, cad_box, gyroid_g, gyroid_level, wall_segments,
 
 def _init():
     if not gmsh.isInitialized():
-        gmsh.initialize()
+        gmsh.initialize(interruptible=False)
     gmsh.option.setNumber('General.Verbosity', 1)
 
 

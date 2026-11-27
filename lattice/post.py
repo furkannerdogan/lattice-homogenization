@@ -136,3 +136,45 @@ def test_moduli(sig, eps, name):
         k = {'yz': 3, 'xz': 4, 'xy': 5}[plane]
         return {'G': sig[k] / eps[k]}
     raise ValueError(name)
+
+
+# FE frame -> print (CAD) frame. Prismatic cells: (x, y, z)_fe = (z, x, y)_cad, so x_cad = y_fe, y_cad = z_fe,
+# z_cad = x_fe. In Voigt order the cyclic permutation needs no sign changes.
+_FE_TO_PRINT = [1, 2, 0, 4, 5, 3]
+
+
+def to_print_frame(C, pattern):
+    """C in the print frame (x, y in the print plane, z = build direction)."""
+    from .geometry import PRISMATIC
+    C = np.asarray(C, float)
+    return C[np.ix_(_FE_TO_PRINT, _FE_TO_PRINT)] if pattern in PRISMATIC else C.copy()
+
+
+def to_fe_frame(C, pattern):
+    """Inverse of to_print_frame."""
+    from .geometry import PRISMATIC
+    inv = list(np.argsort(_FE_TO_PRINT))
+    C = np.asarray(C, float)
+    return C[np.ix_(inv, inv)] if pattern in PRISMATIC else C.copy()
+
+
+def rotation_6x6(R):
+    """Mandel rotation matrix Q for a 3x3 rotation R: mandel(C') = Q mandel(C) Q^T with x' = R x."""
+    Q = np.zeros((6, 6))
+    basis = []
+    for i, j in VOIGT_PAIRS:
+        B = np.zeros((3, 3))
+        B[i, j] = B[j, i] = 1.0
+        basis.append(B / np.linalg.norm(B))                      # orthonormal (Mandel) basis
+    for J, B in enumerate(basis):
+        Bp = R @ B @ R.T
+        for I, A in enumerate(basis):
+            Q[I, J] = np.sum(A * Bp)
+    return Q
+
+
+def rotate(C, R):
+    """C (Voigt, engineering shear) in the frame x' = R x."""
+    Q = rotation_6x6(np.asarray(R, float))
+    Cm = Q @ mandel(np.asarray(C, float)) @ Q.T
+    return Cm / np.outer(W, W)
