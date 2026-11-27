@@ -121,6 +121,12 @@ Gyroid: CalculiX runs are switched off in the app (refinement is oscillatory and
 ~470k nodes); the app shows the bundled Abaqus and CalculiX gyroid results. For the other cells, check the
 node count in the Mesh tab before queueing large runs.
 
+## Read-only web version
+
+`python scripts/build_static.py` writes `site/`: the explorer, trends, density laws and mesh/refinement tabs
+as a static page (no server, no CalculiX; previews only at the FE densities and refinement levels). It is
+published on GitHub Pages from the `gh-pages` branch: https://furkannerdogan.github.io/lattice-homogenization/
+
 ## Command line without the browser
 
 ```bat

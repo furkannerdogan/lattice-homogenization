@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lattice Explorer</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/style.css">
-<script src="/static/vendor/plotly.min.js"></script>
-<script type="importmap">{"imports": {"three": "/static/vendor/three.module.min.js"}}</script>
+<link rel="stylesheet" href="static/style.css">
+<script src="static/vendor/plotly.min.js"></script>
+<script type="importmap">{"imports": {"three": "./static/vendor/three.module.min.js"}}</script>
 </head>
 <body>
 <header class="top">
@@ -159,7 +159,7 @@
       <div class="cardhead"><h3>Grid convergence index (three finest meshes)</h3></div>
       <table class="tbl" id="convtable"></table>
       <div class="note" id="convnote"></div>
-      <div class="runrow">
+      <div class="runrow server-only">
         <span>Run a study with CalculiX for the selected cell and &rho;: n<sub>t</sub> =</span>
         <input type="text" id="convlevels" value="2, 3, 4, 6">
         <button id="convrun">Queue jobs</button>
@@ -278,6 +278,6 @@
 </main>
 </div>
 <div id="toast" hidden></div>
-<script type="module" src="/static/app.js"></script>
+<script type="module" src="static/app.js"></script>
 </body>
 </html>

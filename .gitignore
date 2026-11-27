@@ -14,3 +14,4 @@ out/decks*/
 *.12d
 spooles.out
 .pytest_cache/
+site/

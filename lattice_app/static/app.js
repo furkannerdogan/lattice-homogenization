@@ -1,6 +1,10 @@
 // Lattice Explorer front end. Plain ES module; Plotly (global) for charts, three.js for 3D meshes.
 import * as THREE from 'three';
-import { OrbitControls } from '/static/vendor/OrbitControls.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import * as SCI from './science.js';
+
+// Read-only web version (scripts/build_static.py): data from ./data, derived quantities computed here.
+const STATIC = document.body.dataset.static === '1';
 
 const $ = (id) => document.getElementById(id);
 const NAMES = { grid: 'Grid', triangles: 'Triangles', honeycomb: 'Honeycomb', cubic: 'Cubic', gyroid: 'Gyroid' };
@@ -11,7 +15,30 @@ const S = { state: null, pattern: 'honeycomb', rho: 0.3, material: 'PLA', source
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const color = (p) => css('--s' + (S.state.patterns.indexOf(p) + 1));
 function toast(msg, ms = 3500) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => (t.hidden = true), ms); }
+const _json = {};
+async function getJSON(url) {
+  if (!_json[url]) _json[url] = fetch(url).then((r) => { if (!r.ok) throw new Error(`not available in the web version (${url})`); return r.json(); });
+  return _json[url];
+}
+async function staticApi(path) {
+  const u = new URL(path, 'http://x'), p = Object.fromEntries(u.searchParams), route = u.pathname;
+  const src = p.source || 'abaqus';
+  if (route === '/api/state') return getJSON('data/state.json');
+  if (route === '/api/explore') {
+    const st = await getJSON('data/state.json'), g = await getJSON(`data/${src}/cgrid.json`), grid = g.patterns[p.pattern];
+    if (!grid) return { ok: false, message: `No ${src} data for ${p.pattern}.` };
+    return SCI.explore(p.pattern, +p.rho, grid, st.rho_grid.start, st.rho_grid.step, st.rho_range, st.materials[p.material || 'PLA']);
+  }
+  if (route === '/api/trends') return getJSON(`data/${src}/trends.json`);
+  if (route === '/api/laws') return getJSON(`data/${src}/laws_${p.pattern}.json`).catch(() => ({ ok: false }));
+  if (route === '/api/convergence/sets') return getJSON(`data/${src}/conv_sets.json`);
+  if (route === '/api/convergence') return getJSON(`data/${src}/conv_${p.pattern}_${+p.rho}.json`);
+  if (route === '/api/mesh') return getJSON(`data/mesh/${p.pattern}_${+p.rho}_${+p.n_t}.json`);
+  if (route === '/api/jobs') return [];
+  throw new Error('not available in the read-only web version');
+}
 async function api(path, opts = {}) {
+  if (STATIC) return staticApi(path);
   const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (e) { /* not json */ } throw new Error(m); }
   return r.json();
@@ -70,8 +97,9 @@ async function init() {
   seg('trscale', 'trscale', () => drawTrends());
   $('polarall').onchange = () => drawPolar();
   initMesh(); initFields(); initJobs(); initSettings(); initData();
+  if (STATIC) await initStatic();
   setPattern(S.pattern);
-  setInterval(pollJobs, 2500); pollJobs();
+  if (!STATIC) { setInterval(pollJobs, 2500); pollJobs(); }
 }
 function fillMaterials() {
   const m = S.state.materials;
@@ -84,6 +112,7 @@ function fillSources() {
   $('source').innerHTML = o; $('datasource').innerHTML = '<option value="">all sources</option>' + o; $('source').value = S.source;
 }
 function renderSolver(sol, cgx) {
+  if (STATIC) { $('solverstatus').innerHTML = '<span class="muted">read-only web version · FE results bundled</span>'; return; }
   const ok = sol && sol.ok;
   $('solverstatus').innerHTML = `<span class="dot" style="background:${ok ? css('--good') : css('--bad')}"></span>` +
     (ok ? `CalculiX ${sol.version}` : 'CalculiX not found');
@@ -102,6 +131,7 @@ function setPattern(p) {
 const refreshDeb = debounce(() => refresh(), 90);
 function setRho(r, fromSlider) {
   r = Math.min(0.95, Math.max(0.05, r)); S.rho = Math.round(r * 1000) / 1000;
+  if (STATIC) S.rho = Math.round(Math.round(r / 0.005) * 0.005 * 1000) / 1000;   // web version: C(rho) stored on this grid
   if (!fromSlider) $('rho').value = S.rho; $('rhonum').value = S.rho.toFixed(3);
   $('jrho').value = S.rho;
   refreshDeb();
@@ -377,12 +407,37 @@ function initMesh() {
     try { await api('/api/jobs', { method: 'POST', body: JSON.stringify({ pattern: S.pattern, rho: S.rho, n_t: lv, material: S.material }) }); toast(`queued ${lv.length} jobs for ${NAMES[S.pattern]} ρ = ${S.rho}; see Jobs`); pollJobs(); } catch (e) { toast(e.message); }
   };
 }
+let meshIndex = null;
+function meshRho() {                       // static: previews exist only at the FE densities
+  if (!STATIC) return S.rho;
+  const rs = Object.keys(meshIndex[S.pattern] || {}).map(Number);
+  return rs.reduce((a, b) => (Math.abs(b - S.rho) < Math.abs(a - S.rho) ? b : a), rs[0]);
+}
+function fillMeshLevels() {
+  if (!STATIC) return;
+  const r = meshRho(), lv = (meshIndex[S.pattern] || {})[String(r)] || [];
+  const sel = $('meshnt'), prev = +sel.value;
+  sel.innerHTML = lv.map((n) => `<option value="${n}">${n}</option>`).join('');
+  const prod = S.state.production_nt[S.pattern];
+  sel.value = lv.includes(prev) ? prev : (lv.includes(prod) ? prod : lv[0]);
+  $('meshrhonote').textContent = Math.abs(r - S.rho) > 1e-9 ? `previews exist at the FE densities: showing ρ = ${r}` : '';
+}
+async function initStatic() {
+  ['fields', 'jobs', 'data', 'settings'].forEach((t) => (document.querySelector(`#tabs button[data-tab="${t}"]`).hidden = true));
+  document.querySelectorAll('.server-only').forEach((e) => (e.hidden = true));
+  const inp = $('meshnt'), sel = document.createElement('select');
+  sel.id = 'meshnt'; inp.replaceWith(sel);
+  const note = document.createElement('span'); note.id = 'meshrhonote'; note.className = 'muted'; sel.parentElement.after(note);
+  sel.onchange = () => buildMesh();
+  meshIndex = await getJSON('data/mesh_index.json');
+}
 async function buildMesh() {
   if (!meshViewer) meshViewer = new Viewer($('meshview'));
-  const nt = +$('meshnt').value;
+  fillMeshLevels();
+  const nt = +$('meshnt').value, mrho = meshRho();
   $('meshbtn').disabled = true; $('meshbtn').textContent = 'building...';
   try {
-    const d = await api('/api/mesh?' + q({ pattern: S.pattern, rho: S.rho, n_t: nt }));
+    const d = await api('/api/mesh?' + q({ pattern: S.pattern, rho: mrho, n_t: nt }));
     const X = b64(d.X, Float32Array), T = b64(d.T, Uint32Array), E = b64(d.Ed, Uint32Array);
     meshViewer.clear();
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(X, 3)); g.setIndex(new THREE.BufferAttribute(T, 1)); g.computeVertexNormals();
@@ -406,7 +461,7 @@ async function loadConvSets() {
   sel.innerHTML = sets.map((s) => `<option value="${s.pattern}|${s.rho}">${NAMES[s.pattern]} ρ = ${s.rho} (n_t ${s.levels.join(', ')})</option>`).join('') || '<option value="">no study for this source</option>';
   const pref = sets.find((s) => s.pattern === S.pattern && Math.abs(s.rho - S.rho) < 1e-6) || sets.find((s) => s.pattern === S.pattern);
   if (pref) sel.value = `${pref.pattern}|${pref.rho}`; else if (prev) sel.value = prev;
-  if (!meshViewer) buildMesh();
+  if (!meshViewer || STATIC || meshViewer.pat !== S.pattern) buildMesh();
   loadConvergence();
 }
 async function loadConvergence() {

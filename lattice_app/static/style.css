@@ -129,3 +129,4 @@ table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nu
 .legend-html .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
 .legend-html .dash { display: inline-block; width: 16px; border-top: 1.5px dashed var(--muted); vertical-align: middle; margin-right: 5px; }
 .legend-html .dot { display: inline-block; width: 16px; border-top: 1.5px dotted var(--muted); vertical-align: middle; margin-right: 5px; }
+[hidden] { display: none !important; }
