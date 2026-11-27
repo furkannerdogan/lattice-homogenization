@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lattice Explorer</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/style.css">
+<script src="static/vendor/plotly.min.js"></script>
+<script type="importmap">{"imports": {"three": "./static/vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Lattice Explorer <span class="muted" id="ver"></span></div>
+  <nav id="tabs">
+    <button data-tab="explore" class="on">Explorer</button>
+    <button data-tab="trends">Trends</button>
+    <button data-tab="laws">Density laws</button>
+    <button data-tab="mesh">Mesh &amp; refinement</button>
+    <button data-tab="fields">Stress fields</button>
+    <button data-tab="jobs">Jobs <span id="jobbadge" class="badge" hidden></span></button>
+    <button data-tab="data">Data</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <div class="solver" id="solverstatus"></div>
+</header>
+
+<div class="layout">
+<aside class="side">
+  <div class="group">
+    <label class="lab">Cell</label>
+    <div id="patterns" class="patterns"></div>
+  </div>
+  <div class="group">
+    <label class="lab" for="rho">Relative density &rho;</label>
+    <div class="rhorow">
+      <input type="range" id="rho" min="0.05" max="0.95" step="0.005" value="0.3">
+      <input type="number" id="rhonum" min="0.05" max="0.95" step="0.01" value="0.30">
+    </div>
+    <div class="ticks" id="rhoticks"></div>
+    <div class="note" id="rhonote"></div>
+  </div>
+  <div class="group">
+    <label class="lab" for="material">Solid material</label>
+    <select id="material"></select>
+    <div class="note" id="matnote"></div>
+  </div>
+  <div class="group">
+    <label class="lab" for="source">Data source</label>
+    <select id="source"></select>
+  </div>
+  <div class="group note">
+    Print frame: x, y in the print plane, z = build direction. Prismatic cells (grid, triangles,
+    honeycomb) are extruded along z.
+  </div>
+</aside>
+
+<main>
+<!-- ======================================================== EXPLORER -->
+<section id="tab-explore" class="tab">
+  <div class="status" id="exstatus"></div>
+  <div class="grid">
+    <div class="card span5">
+      <div class="cardhead"><h3>Directional Young's modulus E(n)</h3>
+        <span class="muted" id="surfinfo"></span></div>
+      <div id="surf" class="plot tall"></div>
+    </div>
+    <div class="card span7">
+      <div class="cardhead"><h3>Polar sections</h3>
+        <div class="seg" id="polarq"><button data-v="E" class="on">E(&theta;)</button><button data-v="G">G(&theta;)</button></div>
+        <label class="chk"><input type="checkbox" id="polarall"> all cells</label>
+      </div>
+      <div id="polar" class="plot tall"></div>
+    </div>
+    <div class="card span6">
+      <div class="cardhead"><h3>Stiffness matrix C</h3>
+        <div class="seg" id="cframe"><button data-v="print" class="on">print frame</button><button data-v="fe">FE frame</button></div>
+        <div class="seg" id="cunit"><button data-v="MPa" class="on">MPa</button><button data-v="norm">/ E<sub>s</sub></button></div>
+      </div>
+      <table class="matrix" id="cmat"></table>
+      <div class="note" id="cnote"></div>
+    </div>
+    <div class="card span3">
+      <div class="cardhead"><h3>Engineering constants</h3></div>
+      <table class="kv" id="consts"></table>
+    </div>
+    <div class="card span3">
+      <div class="cardhead"><h3>Virtual tests (from C)</h3></div>
+      <table class="kv" id="vtests"></table>
+    </div>
+    <div class="card span12">
+      <div class="cardhead"><h3>This cell vs &rho;</h3><span class="muted">lines: density law; dots: FE; vertical line: current &rho;</span></div>
+      <div id="cellrho" class="plot mid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== TRENDS -->
+<section id="tab-trends" class="tab" hidden>
+  <div class="toolbar">
+    <div class="seg" id="trscale"><button data-v="log" class="on">log axes</button><button data-v="linear">linear</button></div>
+    <div class="legend-html" id="trlegend"></div>
+  </div>
+  <div class="note" style="margin:-4px 0 10px">Lines: density laws; dots: FE. Shaded band: FE data range. Voigt bound &rho;E<sub>s</sub> holds for E(n) in every direction;
+    the Hashin-Shtrikman upper bound applies to isotropic cells only.</div>
+  <div class="grid" id="trendgrid"></div>
+</section>
+
+<!-- ======================================================== LAWS -->
+<section id="tab-laws" class="tab" hidden>
+  <div class="grid">
+    <div class="card span7">
+      <div class="cardhead"><h3 id="lawtitle">Density laws</h3></div>
+      <div id="lawplot" class="plot tall"></div>
+    </div>
+    <div class="card span5">
+      <div class="cardhead"><h3>Poisson ratios</h3><span class="muted">monotone cubic (PCHIP) through FE points and &nu;<sub>s</sub> at &rho; = 1</span></div>
+      <div id="nuplot" class="plot tall"></div>
+    </div>
+    <div class="card span12">
+      <div class="cardhead"><h3>Modulus laws used by the explorer (print frame)</h3></div>
+      <div class="note">
+        Each modulus, divided by the solid value (E<sub>s</sub> or G<sub>s</sub> = E<sub>s</sub>/2(1+&nu;<sub>s</sub>)), is fitted with two
+        families; the one with the lower leave-one-out (LOO) error is kept, and its polynomial degree d is chosen by LOO as well:<br>
+        mixture: h = &rho; + &rho;(1&minus;&rho;) &Sigma; c<sub>i</sub> &rho;<sup>i</sup> &nbsp;&nbsp;
+        power-mixture: h = &rho;<sup>n</sup> [1 + (1&minus;&rho;) &Sigma; b<sub>i</sub> &rho;<sup>i</sup>] &nbsp;&nbsp; (both give h(1) = 1).
+        The plain power law a&rho;<sup>n</sup> is dashed in the chart for comparison. C(&rho;) is assembled from the fitted constants
+        (<span id="lawsym"></span>). Fitting the moduli directly avoids the cancellation that separate C<sub>ij</sub> fits suffer for
+        bending-dominated in-plane moduli.
+      </div>
+      <table class="tbl" id="lawtable"></table>
+    </div>
+    <div class="card span12">
+      <div class="cardhead"><h3>C<sub>ij</sub> entry laws (FE frame, HD convention; reported, not used for the explorer)</h3></div>
+      <table class="tbl" id="entrytable"></table>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== MESH -->
+<section id="tab-mesh" class="tab" hidden>
+  <div class="grid">
+    <div class="card span6">
+      <div class="cardhead"><h3>Mesh preview</h3>
+        <label class="inl"><span>n<sub>t</sub></span> <input type="number" id="meshnt" min="1" max="10" step="0.5" value="3"></label>
+        <button id="meshbtn" class="primary">Build mesh</button>
+      </div>
+      <div id="meshview" class="view"></div>
+      <table class="kv two" id="meshstats"></table>
+    </div>
+    <div class="card span6">
+      <div class="cardhead"><h3>Refinement study</h3>
+        <select id="convset"></select>
+      </div>
+      <div id="convplot" class="plot mid"></div>
+      <div id="converr" class="plot mid"></div>
+    </div>
+    <div class="card span7">
+      <div class="cardhead"><h3>Grid convergence index (three finest meshes)</h3></div>
+      <table class="tbl" id="convtable"></table>
+      <div class="note" id="convnote"></div>
+      <div class="runrow server-only">
+        <span>Run a study with CalculiX for the selected cell and &rho;: n<sub>t</sub> =</span>
+        <input type="text" id="convlevels" value="2, 3, 4, 6">
+        <button id="convrun">Queue jobs</button>
+      </div>
+    </div>
+    <div class="card span5 explain">
+      <div class="cardhead"><h3>How to read this</h3></div>
+      <p><b>n<sub>t</sub></b> is the number of elements across the thinnest wall; the element size there is
+        h = t<sub>min</sub>/n<sub>t</sub>. Every other size in the mesh (grading away from walls, the cap in the
+        interior) is a fixed multiple of h, so halving h refines the whole mesh in proportion.</p>
+      <p><b>Observed order p.</b> If the error behaves like a h<sup>p</sup>, three meshes with ratios
+        r<sub>21</sub> = h<sub>2</sub>/h<sub>1</sub>, r<sub>32</sub> = h<sub>3</sub>/h<sub>2</sub> determine p
+        (Celik et al. 2008, fixed-point form for unequal ratios).</p>
+      <p><b>Richardson extrapolation</b> estimates the value at h &rarr; 0:
+        f<sub>ext</sub> = (r<sub>21</sub><sup>p</sup> f<sub>1</sub> &minus; f<sub>2</sub>) / (r<sub>21</sub><sup>p</sup> &minus; 1).</p>
+      <p><b>GCI</b> (Roache 1998) is an error band on the finest mesh with safety factor F<sub>s</sub> = 1.25:
+        GCI = F<sub>s</sub> |f<sub>1</sub> &minus; f<sub>2</sub>|/|f<sub>1</sub>| / (r<sub>21</sub><sup>p</sup> &minus; 1).
+        It is meaningful only in the asymptotic range, where the error behaves like a h<sup>p</sup>. The table checks this by
+        comparing p from the three finest meshes with p from the next coarser triple: similar values mean asymptotic.</p>
+      <p><b>Corners.</b> Where walls meet at a re-entrant corner the elastic stress is singular
+        (&sigma; ~ r<sup>&lambda;&minus;1</sup>, 0 &lt; &lambda; &lt; 1): the peak stress keeps growing with
+        refinement and never converges. C<sub>ij</sub> is a strain energy, an integral over the cell, and stays finite,
+        so it converges, at an order set partly by the corner angle. Oscillatory convergence (sign changes between
+        levels) makes p unreliable; the table flags it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== FIELDS -->
+<section id="tab-fields" class="tab" hidden>
+  <div class="toolbar">
+    <select id="fieldrec"></select>
+    <select id="fieldstep"></select>
+    <label class="inl">scale <input type="range" id="fdeform" min="0" max="200" step="1" value="0"><span id="fdeformv">0</span>&times;</label>
+    <label class="inl">tiles <select id="ftiles"><option>1</option><option>2</option><option>3</option></select></label>
+    <label class="inl">colours <select id="fcmap"><option value="seq">sequential</option><option value="rainbow">banded rainbow (Abaqus-like)</option></select></label>
+    <label class="inl">limit <select id="flimit"><option value="p995">99.5th percentile</option><option value="max">maximum</option></select></label>
+    <button id="fvtu">ParaView (.vtu)</button>
+    <button id="ffolder">Open folder</button>
+    <button id="fcgx">Open in cgx</button>
+  </div>
+  <div class="card span12">
+    <div id="fieldview" class="view big"></div>
+    <div class="note" id="fieldnote"></div>
+  </div>
+</section>
+
+<!-- ======================================================== JOBS -->
+<section id="tab-jobs" class="tab" hidden>
+  <div class="grid">
+    <div class="card span4">
+      <div class="cardhead"><h3>New CalculiX run</h3></div>
+      <div class="form">
+        <label>Cell <select id="jpattern"></select></label>
+        <label>&rho; <input type="number" id="jrho" min="0.05" max="0.9" step="0.05" value="0.3"></label>
+        <label><span>n<sub>t</sub> (one or several, e.g. 2, 3, 4)</span> <input type="text" id="jnt" value="3"></label>
+        <label>Material <select id="jmat"></select></label>
+        <label class="chk"><input type="checkbox" id="jfield" checked> field output (.frd for stress views)</label>
+        <label class="chk"><input type="checkbox" id="jforce"> run again even if cached</label>
+        <button id="jsubmit" class="primary">Queue</button>
+        <div class="note" id="jnote"></div>
+      </div>
+    </div>
+    <div class="card span8">
+      <div class="cardhead"><h3>Queue</h3><span class="muted" id="jobsummary"></span></div>
+      <table class="tbl" id="jobtable"></table>
+    </div>
+    <div class="card span12">
+      <div class="cardhead"><h3>Log</h3><span class="muted" id="logtitle"></span></div>
+      <pre id="joblog" class="log"></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== DATA -->
+<section id="tab-data" class="tab" hidden>
+  <div class="toolbar">
+    <select id="datasource"></select>
+    <a id="csvlink" class="btn" href="#">Download stiffness CSV (print frame)</a>
+    <span class="muted" id="datacount"></span>
+  </div>
+  <div class="card span12"><table class="tbl" id="datatable"></table></div>
+</section>
+
+<!-- ======================================================== SETTINGS -->
+<section id="tab-settings" class="tab" hidden>
+  <div class="grid">
+    <div class="card span6">
+      <div class="cardhead"><h3>CalculiX</h3></div>
+      <div class="form">
+        <label>ccx executable <input type="text" id="sccx" placeholder="C:\calculix\ccx_i4_static.exe"></label>
+        <div class="btnrow"><button id="sdetect">Auto-detect</button><button id="ssave" class="primary">Save</button></div>
+        <div id="sdetected" class="note"></div>
+        <div id="sccxstatus" class="note"></div>
+        <label>cgx executable (optional) <input type="text" id="scgx" placeholder="C:\calculix\cgx_STATIC.exe"></label>
+        <label>threads for ccx <input type="number" id="sthreads" min="1" max="64" value="2"></label>
+        <label class="chk"><input type="checkbox" id="sfield"> field output on by default</label>
+        <div class="note" id="sws"></div>
+      </div>
+    </div>
+    <div class="card span6">
+      <div class="cardhead"><h3>Materials</h3></div>
+      <table class="tbl" id="mattable"></table>
+      <div class="form inline">
+        <input type="text" id="mname" placeholder="name">
+        <input type="number" id="mE" placeholder="E (MPa)">
+        <input type="number" id="mnu" placeholder="&nu;" step="0.01">
+        <input type="text" id="msrc" placeholder="source of the values">
+        <button id="madd">Add</button>
+      </div>
+      <div class="note">C scales with E<sub>s</sub> at fixed &nu;<sub>s</sub>. A material with a different &nu;<sub>s</sub>
+        needs its own runs (Jobs tab); until then the explorer has no data for it.</div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+<div id="toast" hidden></div>
+<script type="module" src="static/app.js"></script>
+</body>
+</html>
