@@ -20,6 +20,8 @@ from .jobs import Jobs
 from .store import Registry
 
 STATIC = Path(__file__).resolve().parent / 'static'
+# gyroid: refinement is oscillatory and fine meshes are very large; results come from the bundled data only
+NO_SOLVE = {'gyroid'}
 
 
 class JobIn(BaseModel):
@@ -73,7 +75,7 @@ def create_app():
     @app.get('/api/state')
     def state():
         s = config.load()
-        return dict(version=__version__, workspace=str(ws), patterns=list(PATTERNS), rhos=list(RHOS),
+        return dict(version=__version__, workspace=str(ws), patterns=list(PATTERNS), no_solve=sorted(NO_SOLVE), rhos=list(RHOS),
                     production_nt=analysis.PRODUCTION_NT, rho_range=analysis.RHO_RANGE, materials=mats(),
                     sources=reg.sources(), settings=s, solver=solver.check(s.get('ccx_path') or None),
                     cgx=solver.find_cgx(s.get('cgx_path') or None))
@@ -208,6 +210,8 @@ def create_app():
     @app.post('/api/jobs')
     def submit(body: JobIn):
         check_pattern(body.pattern)
+        if body.pattern in NO_SOLVE:
+            raise HTTPException(400, f'{body.pattern}: CalculiX runs are switched off; the app shows the bundled results')
         m = mat(body.material)
         group = None if len(body.n_t) == 1 else f'refine-{body.pattern}-{body.rho}'
         return [jobs.submit(body.pattern, body.rho, nt, m, field=body.field, group=group, force=body.force)

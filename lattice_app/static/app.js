@@ -60,7 +60,7 @@ async function init() {
   const ticks = $('rhoticks');
   st.rhos.forEach((r) => { const s = document.createElement('span'); s.style.left = ((r - 0.05) / 0.9 * 100) + '%'; s.textContent = r; ticks.appendChild(s); });
   fillMaterials(); fillSources(); renderSolver(st.solver, st.cgx);
-  ['jpattern'].forEach((id) => { $(id).innerHTML = st.patterns.map((p) => `<option value="${p}">${NAMES[p]}</option>`).join(''); });
+  $('jpattern').innerHTML = st.patterns.filter((p) => !st.no_solve.includes(p)).map((p) => `<option value="${p}">${NAMES[p]}</option>`).join('');
   $('rho').oninput = () => setRho(+$('rho').value, true);
   $('rhonum').onchange = () => setRho(+$('rhonum').value, false);
   $('material').onchange = () => { S.material = $('material').value; refresh(); };
@@ -92,7 +92,9 @@ function renderSolver(sol, cgx) {
 function setPattern(p) {
   S.pattern = p;
   document.querySelectorAll('#patterns button').forEach((b) => b.classList.toggle('on', b.dataset.p === p));
-  $('jpattern').value = p;
+  if (!S.state.no_solve.includes(p)) $('jpattern').value = p;
+  $('convrun').disabled = S.state.no_solve.includes(p);
+  $('convrun').title = $('convrun').disabled ? `${NAMES[p]}: solving switched off; bundled results only` : '';
   $('convlevels').value = p === 'gyroid' ? '1.5, 2, 2.5, 3' : '2, 3, 4, 6';
   $('meshnt').value = S.state.production_nt[p] || 3;
   refresh();

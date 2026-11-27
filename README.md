@@ -117,9 +117,9 @@ Materials: C scales with E_s at fixed nu_s, so a new material with nu_s = 0.35 u
 at once. A material with another nu_s needs its own runs (Jobs tab); until then the explorer shows no data
 for it. Add materials in *Settings > Materials*, each with the source of its values.
 
-Large runs: check the node count in the Mesh tab before queueing. Gyroid at rho = 0.1 with n_t = 2 has
-about 470k nodes; the direct solver in the static ccx build may then need many GB of memory and a long
-time.
+Gyroid: CalculiX runs are switched off in the app (refinement is oscillatory and fine meshes reach
+~470k nodes); the app shows the bundled Abaqus and CalculiX gyroid results. For the other cells, check the
+node count in the Mesh tab before queueing large runs.
 
 ## Command line without the browser
 
